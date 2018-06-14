@@ -2,6 +2,12 @@
 
 This repository contains a collection of tools to reverse NRF5x firmwares.
 
+## How to install dependencies ##
+
+```
+pip3 install sqlite3 SQLAlchemy
+```
+
 ## NRF parsing and database population ##
 
 The `nrfparse.py` python script must be run once to generate and populate the `nRF.db` SQLite3 database.
