@@ -1,4 +1,5 @@
 #!/usr/bin/python3.5
+
 """
 NRF5 identification tool based on 
 - their .hex signature
