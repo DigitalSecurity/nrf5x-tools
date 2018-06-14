@@ -1,4 +1,4 @@
-# NRF5x Reversing #
+# nRF5x Firmware disassembly tools - Proof of Concept #
 
 This repository contains a collection of tools to reverse NRF5x firmwares.
 
