@@ -1,0 +1,50 @@
+#ifndef BLE_RANGES_H__
+#define BLE_RANGES_H__ 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#define BLE_SVC_BASE 0x60
+#define BLE_SVC_LAST 0x6B
+#define BLE_GAP_SVC_BASE 0x6C
+#define BLE_GAP_SVC_LAST 0x93
+#define BLE_GATTC_SVC_BASE 0x94
+#define BLE_GATTC_SVC_LAST 0x9F
+#define BLE_GATTS_SVC_BASE 0xA0
+#define BLE_GATTS_SVC_LAST 0xAF
+#define BLE_EVT_INVALID 0x00
+#define BLE_EVT_BASE 0x01
+#define BLE_EVT_LAST 0x0F
+#define BLE_GAP_EVT_BASE 0x10
+#define BLE_GAP_EVT_LAST 0x2F
+#define BLE_GATTC_EVT_BASE 0x30
+#define BLE_GATTC_EVT_LAST 0x4F
+#define BLE_GATTS_EVT_BASE 0x50
+#define BLE_GATTS_EVT_LAST 0x6F
+#define BLE_OPT_INVALID 0x00
+#define BLE_OPT_BASE 0x01
+#define BLE_OPT_LAST 0x1F
+#define BLE_GAP_OPT_BASE 0x20
+#define BLE_GAP_OPT_LAST 0x3F
+#define BLE_GATT_OPT_BASE 0x40
+#define BLE_GATT_OPT_LAST 0x5F
+#define BLE_GATTC_OPT_BASE 0x60
+#define BLE_GATTC_OPT_LAST 0x7F
+#define BLE_GATTS_OPT_BASE 0x80
+#define BLE_GATTS_OPT_LAST 0x9F
+#define BLE_CFG_INVALID 0x00
+#define BLE_CFG_BASE 0x01
+#define BLE_CFG_LAST 0x1F
+#define BLE_CONN_CFG_BASE 0x20
+#define BLE_CONN_CFG_LAST 0x3F
+#define BLE_GAP_CFG_BASE 0x40
+#define BLE_GAP_CFG_LAST 0x5F
+#define BLE_GATT_CFG_BASE 0x60
+#define BLE_GATT_CFG_LAST 0x7F
+#define BLE_GATTC_CFG_BASE 0x80
+#define BLE_GATTC_CFG_LAST 0x9F
+#define BLE_GATTS_CFG_BASE 0xA0
+#define BLE_GATTS_CFG_LAST 0xBF
+#ifdef __cplusplus
+}
+#endif
+#endif
