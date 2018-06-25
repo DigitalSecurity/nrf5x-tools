@@ -1,9 +1,10 @@
-#!/usr/bin/python3.5
+#!/usr/bin/env python3.5
+"""
+NRF5-parser tool. 
+This script will parse the development kits of Nordic Semiconductor 
+from the 'developer.nordicsemi.com/' directory
+"""
 
-"""
-NRF5-tool
-"""
-#TODO add unique constraints on database
 import fnmatch
 import os
 import zipfile
@@ -16,20 +17,25 @@ NRFBase = declarative_base()
 engine = create_engine("sqlite:///nRF.db")
 
 class SoftDevice(NRFBase):
-    """SoftDevice table """
+    """
+    SoftDevice table
+    """
     __tablename__ = "SoftDevice"
     soft_id = Column("id", Integer, primary_key=True)
+    sdk_version = Column(String(32))
     sign = Column(String(64))
     softdevice_v = Column(String(32))
-    sdk_version = Column(String(32))
     nrf = Column(String(32))
     svcalls = relationship("SVCALL")
     svc_rbase = relationship("SVCBase")
     svc_rlast = relationship("SVCLast")
     structs = relationship("Structures")
     mem_addr = relationship("MemoryAddr")
+
     def __init__(self, sdk_version, softdevice, nrf, header_dir, linker_dir, hex_dir, session):
-        """SoftDevice Class attributes and methods"""
+        """
+        SoftDevice Class attributes and methods
+        """
         self.sdk_version = sdk_version
         self.softdevice_v = softdevice
         self.nrf = nrf
@@ -46,13 +52,17 @@ class SoftDevice(NRFBase):
         self.enum = 0
         self.session = session
     def set_linkers(self):
-        """list linkers paths for associated softdevice"""
+        """
+        Sets the list of linkers'paths of the associated softdevice
+        """
         linkers_path = "./SDKs/" + self.sdk_version + "/" + self.linker_dir
         for linker_file in os.listdir(linkers_path):
             if fnmatch.fnmatch(linker_file, "*.ld"):
                 self.linkers.append(linkers_path+linker_file)
     def set_headers(self):
-        """list headers paths for associated softdevice"""
+        """
+        Sets the list of headers'paths to the associated softdevice
+        """
         headers_path = "./SDKs/" + self.sdk_version + "/" + self.header_dir
         for header_file in os.listdir(headers_path):
             if fnmatch.fnmatch(header_file, "*.h"):
@@ -61,8 +71,8 @@ class SoftDevice(NRFBase):
                     self.headers.append(headers_path+header_file)
     def signature(self):
         """
-        returns softdevice signature
-        The signature is the sha256 hash of specific bytes of its .hex file
+        Returns softdevice's signature
+        The signature is the sha256 hash of specific bytes of its firmware (.hex format)
         """
         if (self.hex_dir != None):
             hex_path = "./SDKs/"+ self.sdk_version + "/" + self.hex_dir
@@ -74,37 +84,66 @@ class SoftDevice(NRFBase):
             self.sign = self.sdk_version + "_" + self.nrf + "_" + self.softdevice_v
     def mem_parser(self):
         """
-        returns memory mapping of RAM and Flash sections of the binary
+        Extracts memory mapping of RAM and Flash sections of the binary from linkers files
+        """
+        softdev_v = None
+        mem_file = 0
+        for mem_path in self.linkers:
+            nrf_props = mem_path.rsplit("/")[-1].rsplit("_")
+            if len(nrf_props) == 4:
+                card_version = nrf_props[3].replace(".ld", "")
+                if "/Source/templates/gcc/" in mem_path and self.softdevice_v in mem_path:
+                    self.nrf = mem_path.split("/")[3]
+                    mem_file = 1
+                    softdev_v = nrf_props[2]
+                elif "/components/softdevice/" in mem_path and "/toolchain/armgcc/armgcc_s" in mem_path and self.softdevice_v in mem_path and "xx" in mem_path:
+                    self.nrf = nrf_props[2]
+                    mem_file = 1
+                    if nrf_props[1].startswith("s"):
+                        softdev_v = nrf_props[1]
+                elif "/components/toolchain/gcc/gcc_nrf5" in mem_path and "xx" in mem_path and self.softdevice_v in mem_path:
+                    self.nrf = nrf_props[1]
+                    mem_file = 1
+                    if nrf_props[2].startswith("s"):
+                        softdev_v = nrf_props[2]
+                if mem_file == 1:
+                    with open(mem_path, 'r+') as memfile:
+                        for line in memfile:
+                            if ("FLASH" in line and "ORIGIN" in line and "LENGTH" in line):
+                                addr = line.split(":")[1].rsplit(',')
+                                for mem_addr in addr:
+                                    if "ORIGIN" in mem_addr:
+                                        rom_origin = mem_addr.split("=")[1].strip()
+                                    elif "LENGTH" in mem_addr:
+                                        rom_length = mem_addr.split("=")[1].strip().replace("\n", "")
+                            if ("RAM" in line and "ORIGIN" in line and "LENGTH" in line):
+                                addr = line.split(":")[1].rsplit(',')
+                                for mem_addr in addr:
+                                    if "ORIGIN" in mem_addr:
+                                        ram_origin = mem_addr.split("=")[1].strip()
+                                    elif "LENGTH" in mem_addr:
+                                        ram_length = mem_addr.split("=")[1].strip().replace("\n", "")
+                        mem_addr = MemoryAddr(ram_origin, ram_length, rom_origin, rom_length, softdev_v, self.nrf, card_version, self.sign)
+                        self.session.add(mem_addr)
+
+    def define_nrf(self):
+        """
+        Finds which NRF is associated to the provided softdevice, and SDK version
         """
         for mem_path in self.linkers:
             nrf_props = mem_path.rsplit("/")[-1].rsplit("_")
             if len(nrf_props) == 4 and 'xx' in nrf_props[3]:
-                softdev_v = nrf_props[1]
-                #TODO add real nrf version instead (nrf51822 or nrf51422)
-                nrf = nrf_props[2]
-                card_version = nrf_props[3].replace(".ld", "")
-                with open(mem_path, 'r+') as memfile:
-                    for line in memfile:
-                        if ("FLASH" in line and "ORIGIN" in line and "LENGTH" in line):
-                            addr = line.split(":")[1].rsplit(',')
-                            for mem_addr in addr:
-                                if "ORIGIN" in mem_addr:
-                                    rom_origin = mem_addr.split("=")[1].strip()
-                                elif "LENGTH" in mem_addr:
-                                    rom_length = mem_addr.split("=")[1].strip().replace("\n", "")
-                        if ("RAM" in line and "ORIGIN" in line and "LENGTH" in line):
-                            addr = line.split(":")[1].rsplit(',')
-                            for mem_addr in addr:
-                                if "ORIGIN" in mem_addr:
-                                    ram_origin = mem_addr.split("=")[1].strip()
-                                elif "LENGTH" in mem_addr:
-                                    ram_length = mem_addr.split("=")[1].strip().replace("\n", "")
-                    mem_addr = MemoryAddr(ram_origin, ram_length, rom_origin, rom_length, nrf, softdev_v, card_version, self.sign)
-                    self.session.add(mem_addr)
+                if "/Source/templates/gcc/" in mem_path and self.softdevice_v in mem_path:
+                    self.nrf = mem_path.split("/")[3]
+                elif "/components/softdevice/" in mem_path and "/toolchain/armgcc/armgcc_s" in mem_path and self.softdevice_v in mem_path and "xx" in mem_path:
+                    self.nrf = nrf_props[2]
+                elif "/components/toolchain/gcc/gcc_nrf5" in mem_path and "xx" in mem_path and self.softdevice_v in mem_path:
+                    self.nrf = nrf_props[1]
+        print("NRF version: {0}".format(self.nrf))
 
     def svc_parser(self):
         """
-        parses SVC ranges, SVCs and SVCALL from SoftDevice SDK
+        Global parser: Parses SVC ranges, SVCs and SVCALL from SoftDevice development kit
         """
         for h_path in self.headers:
             self.svc_ranges(h_path)
@@ -116,8 +155,8 @@ class SoftDevice(NRFBase):
 
     def svc_ranges(self, headerfile):
         """
-        Extracts SVC ranges of the Soft Device version based on parsing
-        SVC_BASE and SVC_LAST from headerfile
+        Extracts SVC ranges of the Soft Device 
+        Based on parsing SVC_BASE and SVC_LAST from header files
         """
         try:
             if os.path.exists(headerfile):
@@ -127,12 +166,12 @@ class SoftDevice(NRFBase):
                             svc_base = line.split("#define ")[1].replace("(", "").replace(")", "").rsplit()
                             self.svc_base[svc_base[0]] = svc_base[1]
                             svc_b = SVCBase(svc_base[0], svc_base[1], self.sign)
-                            #self.session.add(svc_b)
+                            self.session.add(svc_b)
                         elif "SVC_LAST" in line and "#define" in line:
                             svc_last = line.split("#define ")[1].rsplit()
                             self.svc_last[svc_last[0]] = svc_last[1]
                             svc_l = SVCLast(svc_last[0], svc_last[1], self.sign)
-                            #self.session.add(svc_l)
+                            self.session.add(svc_l)
                         else:
                             pass
             else:
@@ -142,11 +181,10 @@ class SoftDevice(NRFBase):
 
     def structures(self, headerfile):
         """
-        extracts structures from header files
+        Extracts structures from header files
         """
         try:
             if os.path.exists(headerfile):
-                print(headerfile)
                 with open(headerfile, 'r') as header:
                     for line in header:
                         if "typedef struct" in line:
@@ -179,17 +217,17 @@ class SoftDevice(NRFBase):
                                     newline = header.readline()
                             struct_name = newline.replace("} ", "").replace("\n", "").replace(";", "")
                             structure = Structures(self.sign, struct_name, None, None)
-                            #self.session.add(structure)
+                            self.session.add(structure)
                             for arg in args_tmp:
                                 argument = StructArgs(self.sign, arg, struct_name)
-                                #self.session.add(argument)
+                                self.session.add(argument)
         except IOError as err:
             print("I/O error: {0}".format(err))
 
     def svcall_parse(self, headerfile):
         """
-        parses SVCALL from headerfile
-        instantiates SVCALL objects with SVCs'syscall number, function name and prototype
+        Parses SVCALL from header files
+        Instantiates SVCALL objects with SVCs'syscall number, function name and prototype
         """
         try:
             if os.path.exists(headerfile):
@@ -214,7 +252,7 @@ class SoftDevice(NRFBase):
                                     func_args = newline.replace("));", "").replace("\n", "")
                                 if svc in self.svcs.keys():
                                     svcall = SVCALL(svc, self.svcs[svc], func_name, return_type, func_args, self.sign)
-                                    #self.session.add(svcall)
+                                    self.session.add(svcall)
                                 else:
                                     print("else condition", svc, self.svcs, headerfile)
                                     pass
@@ -223,8 +261,8 @@ class SoftDevice(NRFBase):
 
     def svc_func(self, headerfile):
         """
-        parses svcs from header files and calculates associated the svc number
-        result is stored in self.svcs dict
+        Parses svcs from header files and calculates associated the svc number
+        Result is stored in self.svcs dict
         """
         try:
             if os.path.exists(headerfile):
@@ -409,7 +447,12 @@ class SVCLast(NRFBase):
 
 class SDK(object):
     """
-    SDK class
+    Based on the Nordic development kit archive in its zip format. 
+    The version will identify the SDK.
+    The softdevices contained in this version are identified and listed, and for each softdevice, 
+    headers and linkers files are extracted from the archive to the disk into the local
+    directory SDKs/sdk_version/. If found in the archive, the firmware in its .hex format 
+    associated to the softdevice is also extracted.
     """
     def __init__(self, sdk_version, sdk_path):
         self.version = sdk_version
@@ -418,7 +461,9 @@ class SDK(object):
         self.hex_path = None
 
     def list_softdevices(self):
-        """lists soft devices contained in the SDK archive"""
+        """
+        Lists Softdevices contained in the SDK archive
+        """
         sdv = "components/softdevice/s"
         inc_path = "/Include/s"
         src_path = "/Source/templates/gcc/"
@@ -435,23 +480,25 @@ class SDK(object):
         return soft_devices
     def extract_softdevices(self):
         """
-        extracts headers and ld directories from archive to local disk
+        Extracts headers and ld directories from archive to local disk
         """
-        sdv = "components/"
+        sdv = "components/softdevice/s"
         inc_path = "/Include/s"
         src_path = "/Source/templates/gcc/"
         with zipfile.ZipFile(self.zip_path) as sdv_zip:
             for f in sdv_zip.namelist():
                 #compiled soft_device
-                if (f.startswith(sdv) and f.endswith('/')):
-                    if ("headers" in f and not "nrf5" in f) or ("toolchain" in f and "gcc" in f):
+                if f.startswith(sdv) and f.endswith("/"):
+                    if ("headers" in f and not "nrf5" in f) or ("toolchain/armgcc/" in f):
+                        dir_to_extract = f 
                         self.extract_fromzip(sdv_zip, f)
-                #only soft_device source code TODO f must be a directory
-                elif f.startswith("nrf") and ((inc_path in f and len(f.split("/")[2]) == 4 and f.split("/")[2].startswith('s')) or (src_path in f)):
-                    self.extract_fromzip(sdv_zip, f)
+                #for archives containing only soft_device source code 
+                elif f.startswith("nrf5"):
+                    if (inc_path in f and len(f.split("/")[2]) == 4 and f.split("/")[2].startswith('s')) or (src_path in f and "xx" in f and "_s" in f):
+                        self.extract_fromzip(sdv_zip, f)
     def extract_hex(self, hex_path):
         """
-        extracts header and ld files from the SDK archive to local SDKs directory
+        Extracts header and linker files from the SDK archive to local SDKs directory
         """
         directory = "./SDKs/" + self.version + "/"
         if not os.path.exists(directory):
@@ -461,17 +508,17 @@ class SDK(object):
         with zipfile.ZipFile(self.zip_path) as sdv_zip:
             for f in sdv_zip.namelist():
                 if (f.startswith(hex_path) and fnmatch.fnmatch(f, '*.hex')):
+                    print("Extracting the Hex format of firmware from archive to disk")
                     self.hex_path = f
                     sdv_zip.extract(f, directory)
     def extract_fromzip(self, sdv_zip, path):
         """
-        extracts header and ld files from the SDK archive to local SDKs directory
+        Extracts header and ld files from the SDK archive to local SDKs directory
         """
         directory = "./SDKs/" + self.version + "/"
         if not os.path.exists(directory):
             if not os.path.exists("SDKs"):
                 os.mkdir("SDKs")
-            #print("creating SDKs directory" + directory)
             os.mkdir(directory)
         try:
             for f in sdv_zip.namelist():
@@ -481,7 +528,7 @@ class SDK(object):
             print("I/O error: {0}".format(err))
 
 class SDKs(object):
-    """SDKs"""
+    """Nordic development kits"""
     def __init__(self, directory):
         """
         creates a dict of SDK versions associated to SDK archives contained in the given directory
@@ -528,29 +575,31 @@ def main():
                 print("\n=== {0} {1} ===".format(sdvc, nrf))
                 print("Hex file for {0} not found in archive. Firmware's signature will depend on the strings contained in the given binary".format(sdvc))
             else:
-                nrf = "hex"
+                nrf = "hex" 
                 sdvc = soft_dvc
                 header_dir = "components/softdevice/" + sdvc + "/headers/"
-                linker_dir = "components/toolchain/gcc/"
+                linker_dir = "components/softdevice/" + sdvc + "/toolchain/armgcc/"
+                linkers_path = "./SDKs/" + sdk_v + "/" + linker_dir
+                if os.path.exists(linkers_path) is False:
+                    linker_dir = "components/toolchain/gcc/"
                 hex_dir = "components/softdevice/" + sdvc + "/hex/"
                 print("\n=== {0} {1} ===".format(sdvc, nrf))
-                print("Extracting the Hex format of {0}'s firware from archive to disk".format(sdvc))
                 sdk.extract_hex(hex_dir)
             soft_device = SoftDevice(sdk_v, sdvc, nrf, header_dir, linker_dir, sdk.hex_path, session)
             soft_device.signature()
-            print("Generating soft device signature")
+            print("SoftDevice Signature: {0}".format(soft_device.sign))
             soft_device.set_headers()
-            print("Setting a list of header files for parsing")
-            soft_device.svc_parser()
-            print("SVCALLs, functions, structures' parsing completed")
+            # Setting a list of header files for parsing
             try:
                 soft_device.set_linkers()
                 if soft_device.linkers != []:
                     soft_device.mem_parser()
             except IOError as err:
                 print("I/O error: {0}".format(err))
+            soft_device.svc_parser()
+            print("SVCALLs, functions, structures' parsing completed")
             session.add(soft_device)
-    #session.commit()
+    session.commit()
     print("SoftDevice successfully added to database")
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-#!/usr/bin/python3.5
+#!/usr/bin/env python3.5
 
 """
 NRF5 reverse tool using IDA-python
@@ -38,9 +38,9 @@ class NRF5xReverse(object):
     def extract_syscalls(self):
         """
         Extracts SVC from ASM to self.svc_addr
+        Condition met in ASM : SVC 0xnum
+        Retrieves syscall number called (SVC 0xnum => 0xnum syscall) at svc_addr
         """
-        #Condition met in ASM : SVC 0xnum
-        #retrieve syscall number called (SVC 0xnum => 0xnum syscall) at svc_addr
         for segea in Segments():
             for head in Heads(segea, SegEnd(segea)):
                 if isCode(GetFlags(head)):
@@ -174,7 +174,7 @@ class SVCALL():
         MakeNameEx(self.addr, self.function, SN_NOWARN)
     def rename(self, types):
         """
-        set type and name to functions in IDA
+        Sets prototypes and names to functions in IDA
         """
         try:
             if "uint" in self.args:
@@ -210,8 +210,8 @@ def main():
     main
     """
     launch_print()
-    nrf_sign = "E:/reverse_iot/nrf5-tools/nRF_ver"
-    nrf_db = "E:/reverse_iot/nrf5-tools/nRF.db"
+    nrf_sign = "./nRF_ver"
+    nrf_db = "./nRF.db"
     nrf = NRF5xReverse(nrf_sign, nrf_db)
     nrf.get_structs()
     nrf.add_struc()
