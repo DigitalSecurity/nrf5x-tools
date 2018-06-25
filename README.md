@@ -5,7 +5,7 @@ This repository contains a collection of tools to reverse NRF5x firmwares.
 ## How to install dependencies ##
 
 ```
-pip3 install sqlite3 SQLAlchemy
+pip3 install sqlite3 SQLAlchemy tqdm
 ```
 
 ## NRF parsing and database population ##
