@@ -9,7 +9,7 @@ import fnmatch
 import os
 import zipfile
 import hashlib
-from sqlalchemy import Column, Integer, String, create_engine, ForeignKey
+from sqlalchemy import Column, Integer, String, create_engine, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
@@ -87,9 +87,10 @@ class SoftDevice(NRFBase):
         Extracts memory mapping of RAM and Flash sections of the binary from linkers files
         """
         softdev_v = None
-        mem_file = 0
         for mem_path in self.linkers:
+            mem_file = 0
             nrf_props = mem_path.rsplit("/")[-1].rsplit("_")
+            print(nrf_props)
             if len(nrf_props) == 4:
                 card_version = nrf_props[3].replace(".ld", "")
                 if "/Source/templates/gcc/" in mem_path and self.softdevice_v in mem_path:
@@ -123,9 +124,9 @@ class SoftDevice(NRFBase):
                                         ram_origin = mem_addr.split("=")[1].strip()
                                     elif "LENGTH" in mem_addr:
                                         ram_length = mem_addr.split("=")[1].strip().replace("\n", "")
-                        mem_addr = MemoryAddr(ram_origin, ram_length, rom_origin, rom_length, softdev_v, self.nrf, card_version, self.sign)
+                        print("adding ", card_version, self.nrf, self.sign, softdev_v)
+                        mem_addr = MemoryAddr(ram_origin, ram_length, rom_origin, rom_length, softdev_v, self.nrf, card_version, self.sign, self.sdk_version)
                         self.session.add(mem_addr)
-
     def define_nrf(self):
         """
         Finds which NRF is associated to the provided softdevice, and SDK version
@@ -343,8 +344,10 @@ class MemoryAddr(NRFBase):
     ram_length = Column(String(256))
     rom_origin = Column(String(256))
     rom_length = Column(String(256))
+    sdk_version = Column(String(256))
     softdev_signature = Column(String(64), ForeignKey('SoftDevice.sign'))
-    def __init__(self, ram_origin, ram_length, rom_origin, rom_length, softdev_v, nrf, card_version, softdev_signature):
+    #__table_args__ = (UniqueConstraint('softdev_v', 'nrf', 'card_version', name='_memory_map'),)
+    def __init__(self, ram_origin, ram_length, rom_origin, rom_length, softdev_v, nrf, card_version, softdev_signature, sdk_version):
         """
         Memory Addresses class
         """
@@ -356,6 +359,7 @@ class MemoryAddr(NRFBase):
         self.nrf = nrf
         self.card_version = card_version
         self.softdev_signature = softdev_signature
+        self.sdk_version = sdk_version
 
 class SVCALL(NRFBase):
     """SVCALL table"""
