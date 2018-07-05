@@ -11,9 +11,7 @@ import subprocess
 import sys
 import os
 import argparse
-import binascii
 import time
-import re
 from intelhex import IntelHex
 from intelhex import bin2hex
 from tqdm import tqdm
@@ -168,12 +166,6 @@ def hex_2_binary(hexfile):
     ih = IntelHex(hexfile)
     bin_file = hexfile.replace(".hex", "-1.bin")
     ih.tobinfile(bin_file)
-    #"""Strip padding"""
-    #tb = open(tmp_bin, 'rb+')
-    #hexdata = binascii.hexlify(tb.read())
-    #hexdata.replace(b'ffffffff', b'')
-    #tb.write(binascii.unhexlify(hexdata))
-    #tb.close()
     print("Dumping binary from hex file to directory: ", bin_file)
     return bin_file
 
