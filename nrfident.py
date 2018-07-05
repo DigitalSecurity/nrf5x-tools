@@ -11,7 +11,11 @@ import subprocess
 import sys
 import os
 import argparse
+import binascii
 import time
+import re
+from intelhex import IntelHex
+from intelhex import bin2hex
 from tqdm import tqdm
 
 class NRF5xIdentify(object):
@@ -20,49 +24,50 @@ class NRF5xIdentify(object):
     Given a firmware, computes its signature and looks for it in the database
     returns the SDK version used, the possible SoftDevice versions and associated RAM and ROM binary addresses
     """
-    def __init__(self, hexfile, cur):
-        self.hexfile = hexfile
+    def __init__(self, binfile, cur, objtype):
         self.cur = cur
         self.sdk_version = None
         self.sdv_version = None
         self.sign = None
-        self.bin = None
+        self.bin = binfile
         self.nrf = None
         self.sdvs = []
+        self.identified = 0
 
     def signature(self):
         """
-        Returns softdevice signature
-        The signature is the sha256 hash of specific bytes of its .hex file
+        Computes the softdevice signature
+        The signature is the sha256 hash of specific bytes of the ihex file
         """
-        print("\nComputing signature from hex")
+        print("\nComputing signature from binary")
         for i in tqdm(range(1)):
             time.sleep(0.05)
-        with open(self.hexfile, 'rb+') as sdv_hex:
-            sdv_hex.seek(10000)
-            extract = sdv_hex.read(40000)
+        with open(self.bin, 'rb+') as sdv_hex:
+            sdv_hex.seek(1000)
+            extract = sdv_hex.read(10000)
             self.sign = hashlib.sha256(extract).hexdigest()
         print("Signature: ", self.sign)
 
     def identify(self):
         """
-        Identifies the firmware from its signature in the database
+        Identifies the firmware based on its signature in the database
         """
         print("Searching for signature in nRF.db")
         for i in tqdm(range(1)):
             time.sleep(0.05)
         req = "select sdk_version, nrf, softdevice_v from SoftDevice where sign LIKE ?"
         self.cur.execute(req, (self.sign, ))
-        res = self.cur.fetchone()
-        # CASE 1 : signature of the hex file is not in database
-        if res is None:
+        res = self.cur.fetchall()
+        # CASE 1 : signature of the binary file is not in database
+        if res == []:
             print("Signature not found in nRF5x database")
             print("\nComputing approximate signature from strings in binary")
-            self.binary()
+            #content = "Nordic Semiconductor"
             cmd = "strings " + self.bin + " | grep Nordic\ Semiconductor/ | cut -d '/' -f 3,5"
             cmd += "| sed -e s/'\/'/'_'/g | cut -d ' ' -f 2 | sed -e s/'SDK_'/''/g | "
             cmd += "sed -e s/'.0_'/'_'/g | sort -u"
             nrf_sign = subprocess.getoutput(cmd)
+            print(nrf_sign)
             for i in tqdm(range(1)):
                 time.sleep(0.05)
             if "_" in nrf_sign:
@@ -76,72 +81,101 @@ class NRF5xIdentify(object):
                 self.cur.execute(req, (self.sign, self.nrf, self.sdk_version))
                 res = self.cur.fetchall()
                 for sdv in res:
+                    if len(res) > 1:
+                        self.multiple = 1
                     self.sdv_version = sdv[0]
                     print("Possible SoftDevice version: ", self.sdv_version)
-                print("                               ==================")
-        # CASE 2 : signature of the hex file is in database
+                print("=========================")
+                with open("nRF_ver", "w") as nrf_version:
+                    nrf_version.write(self.sign)
+                print("nRF5x signature identified from strings in provided binary")
+                print("Signature written to file nRF_ver in current directory")
+                print("nRF_ver path must be provided when running nrfreverse.py from IDA")
+                self.identified = 1
+            else:
+                print("Can't be identified")
+        # CASE 2 : signature of the binary file is in database
         else:
-            self.sdk_version = res[0]
-            self.nrf = res[1]
-            self.sdv_version = res[2]
+            self.identified = 1
+            self.multiple = 1
+            for sdv in res:
+                self.sdk_version = sdv[0]
+                self.nrf = sdv[1]
+                self.sdv_version = sdv[2]
+                print("=========================")
+                print("SDK version: ", self.sdk_version)
+                print("SoftDevice version:", self.sdv_version)
+                print("NRF:", self.nrf)
+            with open("nRF_ver", "w") as nrf_version:
+                nrf_version.write(self.sign)
             print("                               ==================")
-            print("SDK version: ", self.sdk_version)
-        with open("nRF_ver", "w") as nrf_version:
-            nrf_version.write(self.sign)
             print("nRF5x signature written to file nRF_ver in current directory")
             print("nRF_ver path must be provided when running nrfreverse.py from IDA")
-
-    def binary(self):
-        """
-        Returns the binary format given the hex file
-        $objcopy -I ihex -O binary ./path_to_formware.hex
-        """
-        self.bin = self.hexfile.replace(".hex", ".bin")
-        cmd = "objcopy -I ihex -O binary " + self.hexfile + " " + self.bin
-        subprocess.run(cmd, shell=True, check=True)
 
     def map_binary(self):
         """
         Maps the binary at the right memory addresses
         """
-        req = "select softdev_v, nrf, card_version, ram_origin, ram_length, rom_origin, rom_length from MemoryAddr where softdev_signature LIKE ?"
-        self.cur.execute(req, (self.sign, ))
-        for res in self.cur.fetchall():
-            mem_props(res)
-def mem_props(res):
-    if res is not None:
-        sdv = res[0]
-        nrf = res[1]
-        card_v = res[2]
-        ram_addr = res[3]
-        ram_length = res[4]
-        rom_addr = res[5]
-        rom_length = res[6]
+        if self.identified == 1:
+            if self.multiple is None:
+                req = "select softdev_v, card_version, ram_origin, ram_length, rom_origin, rom_length from MemoryAddr where softdev_signature LIKE ? and nrf=? GROUP BY card_version, ram_origin, ram_length, rom_origin, rom_length"
+                self.cur.execute(req, (self.sign, self.nrf))
+                for res in self.cur.fetchall():
+                    mem_props(res, "m")
+            else:
+                req = "select softdev_v, card_version, ram_origin, ram_length, rom_origin, rom_length, nrf from MemoryAddr where softdev_signature LIKE ? GROUP BY card_version, ram_origin, ram_length, rom_origin, rom_length"
+                self.cur.execute(req, (self.sign, ))
+                for res in self.cur.fetchall():
+                    mem_props(res, "")
+                
+def mem_props(res, ident_type):
+    if ident_type != "m":
+        softdev = res[0]
+        card_v = res[1]
+        ram_addr = res[2]
+        ram_length = res[3]
+        rom_addr = res[4]
+        rom_length = res[5]
         print("\n", " "*35, "*****")
         print(" "*33, "Binary mapping")
         print(" "*36, "*****\n")
-        print("SoftDevice   : ", sdv)
-        print("NRF          : ", nrf)
+        print("SoftDevice  : ", softdev)
         print("Card version : ", card_v)
         print(" "*10, "*****")
         print("RAM address  : ", ram_addr)
         print("RAM length   : ", ram_length)
         print("ROM address  : ", rom_addr)
         print("ROM length   : ", rom_length)
+    else:
+        nrf = res[6]
 
 def bin_to_hex(binary):
     """
-    returns the hex format given the bin file
-    $objcopy -I binary -O ihex binary
+    Returns the ihex format from the given the bin file
     """
     hexfile = binary.replace(".bin", ".hex")
-    cmd = "objcopy -O ihex -I binary " + binary + " " + hexfile
-    subprocess.run(cmd, shell=True, check=True)
+    bin2hex(binary, hexfile)
     print("Converting file object format from bin to hex")
     for i in tqdm(range(1)):
         time.sleep(0.05)
     print("Hex file successfully dumped on disk: {0}".format(hexfile))
     return hexfile
+
+def hex_2_binary(hexfile):
+    """
+    Returns the binary format from the given ihex file
+    """
+    ih = IntelHex(hexfile)
+    bin_file = hexfile.replace(".hex", "-1.bin")
+    ih.tobinfile(bin_file)
+    #"""Strip padding"""
+    #tb = open(tmp_bin, 'rb+')
+    #hexdata = binascii.hexlify(tb.read())
+    #hexdata.replace(b'ffffffff', b'')
+    #tb.write(binascii.unhexlify(hexdata))
+    #tb.close()
+    print("Dumping binary from hex file to directory: ", bin_file)
+    return bin_file
 
 def helper():
     """
@@ -173,14 +207,18 @@ def main():
     args = parser.parse_args()
     con = sqlite3.connect("./nRF.db")
     cur = con.cursor()
+    binfile = ""
+    hexfile = ""
     if args.format == 'hex':
         hexfile = sys.argv[2]
+        objtype = 'hex'
         print("Hex file provided {0}".format(hexfile))
+        binfile = hex_2_binary(hexfile)
     elif args.format == 'bin':
         binfile = sys.argv[2]
+        objtype = 'bin'
         print("Binary file provided {0}".format(binfile))
-        hexfile = bin_to_hex(binfile)
-    nrf = NRF5xIdentify(hexfile, cur)
+    nrf = NRF5xIdentify(binfile, cur, objtype)
     nrf.signature()
     nrf.identify()
     nrf.map_binary()

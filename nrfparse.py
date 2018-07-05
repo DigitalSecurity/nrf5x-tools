@@ -12,6 +12,7 @@ import hashlib
 from sqlalchemy import Column, Integer, String, create_engine, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
+from intelhex import IntelHex
 
 NRFBase = declarative_base()
 engine = create_engine("sqlite:///nRF.db")
@@ -71,14 +72,19 @@ class SoftDevice(NRFBase):
                     self.headers.append(headers_path+header_file)
     def signature(self):
         """
-        Returns softdevice's signature
-        The signature is the sha256 hash of specific bytes of its firmware (.hex format)
+        Returns softdevice's binary's signature
+        The signature is the sha256 hash of specific bytes of the firmware
         """
         if (self.hex_dir != None):
             hex_path = "./SDKs/"+ self.sdk_version + "/" + self.hex_dir
-            with open(hex_path, 'rb+') as sdv_hex:
-                sdv_hex.seek(10000)
-                extract = sdv_hex.read(40000)
+            # Converting ihex to binary format
+            print("Converting the firmware from intelHex format to binary")
+            ih = IntelHex(hex_path)
+            bin_file = hex_path.replace(".hex", ".bin")
+            ih.tobinfile(bin_file)
+            with open(bin_file, 'rb+') as sdv_hex:
+                sdv_hex.seek(1000)
+                extract = sdv_hex.read(10000)
                 self.sign = hashlib.sha256(extract).hexdigest()
         else:
             self.sign = self.sdk_version + "_" + self.nrf + "_" + self.softdevice_v
