@@ -83,7 +83,7 @@ class SoftDevice(NRFBase):
             bin_file = hex_path.replace(".hex", ".bin")
             ih.tobinfile(bin_file)
             with open(bin_file, 'rb+') as sdv_hex:
-                sdv_hex.seek(1000)
+                sdv_hex.seek(4096)
                 extract = sdv_hex.read(10000)
                 self.sign = hashlib.sha256(extract).hexdigest()
         else:

@@ -41,7 +41,10 @@ class NRF5xIdentify(object):
         for i in tqdm(range(1)):
             time.sleep(0.05)
         with open(self.bin, 'rb+') as sdv_hex:
-            sdv_hex.seek(1000)
+            # skip bytes from 0x07C0 to 0x1000 
+            sdv_hex.seek(0)
+            first = sdv_hex.read(1983)
+            sdv_hex.seek(4096)
             extract = sdv_hex.read(10000)
             self.sign = hashlib.sha256(extract).hexdigest()
         print("Signature: ", self.sign)
